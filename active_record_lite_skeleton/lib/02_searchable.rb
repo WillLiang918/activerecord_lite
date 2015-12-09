@@ -4,8 +4,7 @@ require 'byebug'
 
 module Searchable
   def where(params)
-    # ...
-    where_line = params.keys.map { |attr| "#{attr} = ?" }.join(' AND ')
+    where_line = params.keys.map { |key| "#{key} = ?" }.join(" AND ")
 
     results = DBConnection.execute(<<-SQL, *params.values)
       SELECT
@@ -16,22 +15,10 @@ module Searchable
         #{where_line}
     SQL
 
-    return [] if results.empty?
-
-    found_cats = []
-    results.each do |result|
-      found_cats << self.find(result["id"])
-    end
-
-    self.find(results.first["id"])
-    found_cats
+    parse_all(results)
   end
-
-
 end
 
 class SQLObject
-  # Mixin Searchable here...
   extend Searchable
-
 end

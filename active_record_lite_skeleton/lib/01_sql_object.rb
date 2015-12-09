@@ -6,23 +6,21 @@ require 'byebug'
 
 class SQLObject
   def self.columns
-    # ...
-
-    columns = DBConnection.execute2(<<-SQL)
+    return @columns if @columns
+    cols = DBConnection.execute2(<<-SQL).first
       SELECT
         *
       FROM
-        #{table_name}
+        #{self.table_name}
+      LIMIT
+        0
     SQL
-
-    columns.first.map! do |column|
-      column.to_sym
-    end
+    cols.map!(&:to_sym)
+    @columns = cols
   end
 
   def self.finalize!
     self.columns.each do |column|
-
       define_method("#{column}=") do |value|
         self.attributes[column] = value
       end
@@ -35,21 +33,17 @@ class SQLObject
   end
 
   def self.table_name=(table_name)
-    # ...
     @table_name = table_name
   end
 
   def self.table_name
-    # ...
-    @table_name ||= "#{self}".tableize
+    @table_name || self.name.underscore.pluralize
   end
 
   def self.all
-    # ...
     results = DBConnection.execute(<<-SQL)
       SELECT
         #{table_name}.*
-
       FROM
         #{table_name}
     SQL
@@ -58,17 +52,10 @@ class SQLObject
   end
 
   def self.parse_all(results)
-    # ...
-    all_cats = []
-    results.each do |result|
-      all_cats << self.new(result)
-    end
-
-    all_cats
+    results.map { |result| self.new(result) }
   end
 
   def self.find(id)
-    # ...
     results = DBConnection.execute(<<-SQL, id)
       SELECT
         *
@@ -76,42 +63,34 @@ class SQLObject
         #{table_name}
       WHERE
         #{table_name}.id = ?
-      LIMIT
-        1
     SQL
+
       parse_all(results).first
   end
 
   def initialize(params = {})
-    # ...
     params.each do |attr_name, value|
-      raise ("unknown attribute '#{attr_name}'") unless self.class.columns.include?(attr_name.to_sym)
-      self.send("#{attr_name}=".to_sym, value)
+      if self.class.columns.include?(attr_name.to_sym)
+        self.send("#{attr_name}=".to_sym, value)
+      else
+        raise ("unknown attribute '#{attr_name}'")
+      end
     end
 
   end
 
   def attributes
-    # ...
     @attributes ||= {}
   end
 
   def attribute_values
-    # ...
-    attr_values = {}
-    self.class.columns.map do |column|
-      attr_values[column] = self.send(column)
-    end
-
-    attr_values.values
-
+    self.class.columns.map { |column| self.send(column) }
   end
 
   def insert
-    # ...
-    col_names = self.class.columns[1..-1].join(', ')
-    question_marks = attribute_values[1..-1].map { |value|
-      "?" }.join(', ')
+    columns = self.class.columns.drop(1)
+    col_names = columns.map(&:to_s).join(", ")
+    question_marks = (["?"] * columns.count).join(", ")
     insert_row = "#{self.class.table_name} (#{col_names})"
 
     DBConnection.execute(<<-SQL, *attribute_values[1..-1])
@@ -125,28 +104,20 @@ class SQLObject
   end
 
   def update
-    # ...
-    set_line = self.class.columns[1..-1].map do |cols|
-      "#{cols} = ?"
-    end
-    set_line = set_line.join(', ')
+    set_line = self.class.columns
+      .map { |cols| "#{cols} = ?" }.join(", ")
 
-    DBConnection.execute(<<-SQL, attribute_values[1..-1], attribute_values[0])
+    DBConnection.execute(<<-SQL, *attribute_values, id)
       UPDATE
         #{self.class.table_name}
       SET
         #{set_line}
       WHERE
-        id = ?
+        #{self.class.table_name}.id = ?
     SQL
   end
 
   def save
-    # ...
-    if self.id.nil?
-      self.insert
-    else
-      self.update
-    end
+    id.nil? ? insert : update
   end
 end

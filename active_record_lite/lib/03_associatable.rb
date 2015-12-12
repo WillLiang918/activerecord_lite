@@ -49,7 +49,6 @@ end
 module Associatable
   def belongs_to(name, options = {})
     self.assoc_options[name] = BelongsToOptions.new(name, options)
-    options = BelongsToOptions.new(name, options)
 
     define_method(name.to_sym) do
       options = self.class.assoc_options[name]
